@@ -1,14 +1,3 @@
-#!/usr/bin/env python3
-# -*- coding: utf-8 -*-
-"""
-Created on Wed Mar 28 10:41:27 2025
-
-@author: callerw
-
-The following is about genImage by using the detected image.
-First load the image then use api to call OCR, then call my LLaVA model (local run), after use api to gen image.
-"""
-
 import cv2
 import numpy as np
 import json
@@ -31,7 +20,7 @@ def find_latest_image():
 
 
 class DrawingProcessor:
-    def __init__(self, canvas_info_path, margin_mm=20, feed_rate=1000):
+    def __init__(self, canvas_info_path, margin_mm=10, feed_rate=1000):
         self.margin_mm = margin_mm
         self.feed_rate = feed_rate
         self.A4_WIDTH = 210
@@ -49,12 +38,14 @@ class DrawingProcessor:
 
     def create_smooth_edges(self, input_path, output_path):
         print(f"Processing image: {input_path}")
+        # Read the input image
         image = cv2.imread(input_path)
         if image is None:
             raise ValueError("Could not load input image")
 
         # Convert to grayscale
         gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+
         # Apply Gaussian blur to reduce noise
         blurred = cv2.GaussianBlur(gray, (5, 5), 1.4)
 
@@ -77,22 +68,28 @@ class DrawingProcessor:
 
     def generate_gcode(self, edge_image_path, output_path):
         print(f"Generating G-code from: {edge_image_path}")
+        # Read the edge image
         edges = cv2.imread(edge_image_path, cv2.IMREAD_GRAYSCALE)
         if edges is None:
             raise ValueError("Could not load edge image")
 
+        # Find contours in the edge image
         contours, _ = cv2.findContours(
             edges, cv2.RETR_LIST, cv2.CHAIN_APPROX_SIMPLE)
 
+        # Calculate usable canvas dimensions (accounting for margin)
         usable_width = self.canvas_width - (2 * self.margin_mm)
         usable_height = self.canvas_height - (2 * self.margin_mm)
 
+        # Get image dimensions
         img_height, img_width = edges.shape
 
+        # Calculate scaling factor to fit image to canvas
         scale_x = usable_width / img_width
         scale_y = usable_height / img_height
         scale = min(scale_x, scale_y)
 
+        # Calculate the offset to center the image on the canvas
         offset_x = self.canvas_position_x + self.margin_mm + \
             (usable_width - img_width * scale) / 2
         offset_y = self.canvas_position_y + self.margin_mm + \
@@ -106,6 +103,7 @@ class DrawingProcessor:
             "G0 X0 Y0 ; Move to home position"
         ]
 
+        # Process each contour
         print(f"Processing {len(contours)} contours...")
         for contour in contours:
             # Skip very small contours (likely noise)
@@ -165,20 +163,23 @@ def send_gcode_to_machine(gcode_file, port, baud_rate):
         baud_rate (int): Baud rate for serial communication
     """
     try:
-
+        # Open serial connection
         print(f"Opening connection to {port} at {baud_rate} baud...")
         ser = serial.Serial(port, baud_rate, timeout=5)
-        time.sleep(2)
+        time.sleep(2)  # Wait for connection to establish
 
+        # Check if connection is open
         if not ser.is_open:
             print("Failed to open serial connection.")
             return False
 
         print("Connection established.")
 
+        # Wake up the controller
         ser.write("\r\n\r\n".encode())
         time.sleep(2)
 
+        # Clear any startup messages in buffer
         ser.flushInput()
 
         # Read G-code file
@@ -190,17 +191,23 @@ def send_gcode_to_machine(gcode_file, port, baud_rate):
 
         # Send each line of G-code
         for i, line in enumerate(gcode_lines):
+            # Strip comments and whitespace
             l = line.split(';')[0].strip()
             if not l:
-                continue
+                continue  # Skip empty lines
 
+            # Send the command
             ser.write((l + '\n').encode())
+
+            # Wait for response
             response = ser.readline().decode().strip()
 
+            # Print progress
             if i % 10 == 0 or i == total_lines - 1:
                 print(
                     f"Progress: {i+1}/{total_lines} ({(i+1)/total_lines*100:.1f}%)")
 
+            # Safety check - look for error messages
             if 'error' in response.lower():
                 print(f"Error received: {response}")
                 choice = input("Continue sending commands? (y/n): ")
@@ -208,6 +215,7 @@ def send_gcode_to_machine(gcode_file, port, baud_rate):
                     print("Aborting.")
                     break
 
+        # Close connection
         ser.close()
         print("G-code sending completed successfully.")
         return True
@@ -221,12 +229,14 @@ def send_gcode_to_machine(gcode_file, port, baud_rate):
 
 
 def main():
+    # Set default values
     canvas_info_path = "small_canvas_info.json"
     edge_output = "edges.png"
     output_gcode = "output.gcode"
-    PORT = "/dev/cu.usbserial-130"  # Your specified port
+    PORT = "/dev/cu.usbserial-2130"  # Your specified port
     BAUD_RATE = 115200
 
+    # Check if small_canvas_info.json exists
     if not os.path.exists(canvas_info_path):
         print("Canvas info file not found. Creating example file...")
         example_canvas = {
