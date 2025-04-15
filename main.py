@@ -28,7 +28,9 @@ def monitor_for_detection():
             if main_process.returncode == 0:
                 print("code1_genImage.py completed successfully")
 
-                # Now run the additional script after genImage.py completes
+                os.remove("paper_detection.jpg")
+                print("paper_detection.jpg has been deleted")
+
                 print("Running code2_drawItOut...")
                 additional_process = subprocess.run(
                     ["python", "code2_drawItOut.py"], check=False)
@@ -37,13 +39,6 @@ def monitor_for_detection():
                     print("code2_drawItOut.py completed successfully")
                 else:
                     print("Error: drawItOut.py did not execute successfully")
-
-                # Delete paper_detection.jpg after all scripts have run
-                try:
-                    os.remove("paper_detection.jpg")
-                    print("paper_detection.jpg has been deleted")
-                except OSError as e:
-                    print(f"Error deleting paper_detection.jpg: {e}")
 
                 print("Waiting for new paper detection...")
             else:
