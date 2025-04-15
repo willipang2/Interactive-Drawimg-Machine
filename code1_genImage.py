@@ -55,7 +55,7 @@ def extract_text_from_image(image_path, api_key='xxxxxx', language='auto'):
 def identify_items_with_llava(image_path, ocr_text):
     """Use LLaVA to identify consumer items from the image and OCR text"""
     try:
-        prompt = f"Look at this receipt image, which can be in Chinese or English. The OCR extracted the following text: '{ocr_text}'. List all the purchased items such as food, clothing items, books, toys, or other consumer products shown in the image or mentioned in the text. Format your response must in English as a simple comma-separated list without any introduction, explanation, or categorization."
+        prompt = f"Follow these steps to analyse the receipt image: Step 1: Carefully analyse the extracted OCR text: '{ocr_text}'. Step 2: List out all purchased items you can identify from the image or OCR text, including food, clothing, electronics, or any other consumer products. Step 3: Translate all identified items into English if they appear in another language (such as Chinese). Step 4: Convert each identified product into a single, concise English word (e.g., 'apple' instead of 'Fuji apple 500g'). Your final response must be in English as a simple comma-separated list of single words representing each product, without any introduction, explanation, or categorisation."
 
         response = ollama.chat(
             model="llava:7b",
