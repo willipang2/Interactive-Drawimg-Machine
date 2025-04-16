@@ -9,7 +9,6 @@ The following is about genImage by using the detected image.
 First load the image then use api to call OCR, then call my LLaVA model (local run), after use api to gen image.
 """
 
-
 import requests
 import json
 import os
@@ -20,7 +19,7 @@ from io import BytesIO
 import ollama
 
 
-def extract_text_from_image(image_path, api_key='xxxxxx', language='auto'):
+def extract_text_from_image(image_path, api_key='xxxxxxx', language='auto'):
     """Extract text from an image using OCR.space API"""
     try:
         payload = {
@@ -40,7 +39,6 @@ def extract_text_from_image(image_path, api_key='xxxxxx', language='auto'):
         result = r.content.decode()
         json_data = json.loads(result)
 
-        # Extract the parsed text
         text = ""
         if json_data.get("ParsedResults"):
             text = json_data["ParsedResults"][0]["ParsedText"]
@@ -53,9 +51,9 @@ def extract_text_from_image(image_path, api_key='xxxxxx', language='auto'):
 
 
 def identify_items_with_llava(image_path, ocr_text):
-    """Use LLaVA to identify consumer items from the image and OCR text"""
+    """Use LLaVA to identify consumer items"""
     try:
-        prompt = f"Follow these steps to analyse the receipt image: Step 1: Carefully analyse the extracted OCR text: '{ocr_text}'. Step 2: List out all purchased items you can identify from the image or OCR text, including food, clothing, electronics, or any other consumer products. Step 3: Translate all identified items into English if they appear in another language (such as Chinese). Step 4: Convert each identified product into a single, concise English word (e.g., 'apple' instead of 'Fuji apple 500g'). Your final response must be in English as a simple comma-separated list of single words representing each product, without any introduction, explanation, or categorisation."
+        prompt = f"Follow these steps to analyse the receipt image: Step 1: Carefully analyse the extracted OCR text: '{ocr_text}'. Step 2: List out all purchased items you can identify from the OCR text, including food, clothing, electronics, or any other consumer products. Step 3: Translate all identified items into English if they appear in another language (such as Chinese). Step 4: Convert each identified product into a single, concise English word (e.g., 'apple' instead of 'Fuji apple 500g'). Your final response must be in English as a simple comma-separated list of single words representing each product, without any introduction, explanation, or categorisation."
 
         response = ollama.chat(
             model="llava:7b",
@@ -73,24 +71,35 @@ def identify_items_with_llava(image_path, ocr_text):
         return extracted_items
     except Exception as e:
         print(f"Error identifying items with LLaVA: {e}")
-        return ocr_text  # Fallback to OCR text if LLaVA fails
+        return ocr_text
 
 
 def process_identified_items(items_text):
     """Process the LLaVA output to get a clean list of items"""
+    # Remove introductory phrases and numbering
     cleaned_text = re.sub(
-        r'(here are|i can see|i see|these are|the objects|in the image).*?:', '', items_text, flags=re.IGNORECASE)
+        r'(here are|i can see|i see|these are|the objects|in the image|item\s*\d+).*?[:.]',
+        '',
+        items_text,
+        flags=re.IGNORECASE
+    )
 
-    # Split by common separators
-    items = re.split(r'[,\n•-]', cleaned_text)
-    items = [item.strip() for item in items if item.strip()]
+    # Remove any remaining numbers and special characters
+    cleaned_text = re.sub(r'[\d•·、，（）()]', ' ', cleaned_text)
 
-    return items
+    # Split by common separators and clean
+    items = re.split(r'[,\n\-–—]', cleaned_text)
+    items = [re.sub(r'^\W+|\W+$', '', item).strip().lower() for item in items]
+
+    # Filter valid single-word English items
+    valid_items = [
+        item for item in items if item and re.match(r'^[a-z]+$', item)]
+
+    return valid_items
 
 
-def generate_image(prompt, filename="generated_image.png", api_key="xxxxx"):
+def generate_image(prompt, filename="generated_image.png", api_key="xxxxxx"):
     """Generate an image using the Stable Horde API"""
-    # API endpoints
     GENERATE_URL = "https://stablehorde.net/api/v2/generate/async"
 
     payload = {
@@ -101,7 +110,7 @@ def generate_image(prompt, filename="generated_image.png", api_key="xxxxx"):
             "height": 320,
             "steps": 20,
             "cfg_scale": 8,
-            "sampler_name": "k_euler_a"  # Fast sampler
+            "sampler_name": "k_euler_a"
         },
         "nsfw": False,
         "models": ["Deliberate"],
@@ -109,38 +118,26 @@ def generate_image(prompt, filename="generated_image.png", api_key="xxxxx"):
         "n": 1
     }
 
-    # Headers with API key
     headers = {
         "Content-Type": "application/json",
         "apikey": api_key
     }
 
-    print(f"Submitting request with prompt: '{prompt}'")
-
     try:
         response = requests.post(
             GENERATE_URL, headers=headers, data=json.dumps(payload))
-
         if response.status_code != 202:
             print(f"Error: {response.status_code}")
-            print(response.text)
             return None
 
-        # Get the job ID
         job_id = response.json().get("id")
-        print(f"Request submitted! Job ID: {job_id}")
-
         check_url = f"https://stablehorde.net/api/v2/generate/check/{job_id}"
-        max_wait_time = 30  # Maximum wait time in seconds
         start_time = time.time()
 
-        while time.time() - start_time < max_wait_time:
+        while time.time() - start_time < 30:
             time.sleep(1)
             check_response = requests.get(check_url)
             status = check_response.json()
-            print(
-                f"Status: {status.get('waiting')} waiting, {status.get('processing')} processing, {status.get('finished')}/{status.get('amount')} finished")
-
             if status.get("done"):
                 break
 
@@ -148,53 +145,42 @@ def generate_image(prompt, filename="generated_image.png", api_key="xxxxx"):
         status_response = requests.get(status_url)
         result = status_response.json()
 
-        if result.get("generations") and len(result["generations"]) > 0:
+        if result.get("generations"):
             image_url = result["generations"][0]["img"]
             response = requests.get(image_url)
             img = Image.open(BytesIO(response.content))
             img.save(filename)
-            print(f"Image saved as {filename}")
             return filename
-        else:
-            print("No generations were returned.")
-            return None
+        return None
 
     except Exception as e:
         print(f"Error during generation: {e}")
         return None
 
 
-# Main function
 if __name__ == "__main__":
-    #  prompt template
     base_prompt = "single continuous line drawing of a {object} outline, minimalist, black line on white background, ultra clean, no details inside, pure outline only, vectorized look, logo-like, monochrome"
     image_path = "paper_detection.jpg"
 
     if os.path.exists(image_path):
-        # Step 1: Extract text from the image using OCR
         ocr_text = extract_text_from_image(image_path)
-
-        # Step 2: Use LLaVA to identify consumer items from the image and OCR text
         identified_items_text = identify_items_with_llava(image_path, ocr_text)
-
-        # Step 3: Process the LLaVA output to get a clean list of items
         identified_items = process_identified_items(identified_items_text)
-
-        if not identified_items:
-            print("No items identified. Using default object.")
-            identified_items = ["book"]
     else:
-        print(f"Image '{image_path}' not found. Using default object.")
-        identified_items = ["book"]
+        identified_items = []
 
-    # Step 4: Generate only one image using the first identified item
-    if identified_items:
-        item = identified_items[0]  # now set as the first item
-        prompt = base_prompt.format(object=item)
-        output_filename = f"{item.replace(' ', '_')}_outline.png"
-        result = generate_image(prompt, output_filename)
+    # Priority selection: 4 > 3 > 2 > 1 > apple
+    priority_order = [3, 2, 1, 0]  # Indices for items 4-3-2-1
+    selected_item = next(
+        (identified_items[i]
+         for i in priority_order if i < len(identified_items)),
+        "apple"
+    )
 
-        if result:
-            print(f"Generated image: {result}")
-        else:
-            print(f"Failed to generate image for {item}")
+    prompt = base_prompt.format(object=selected_item)
+    output_filename = f"{selected_item.replace(' ', '_')}_outline.png"
+
+    if generate_image(prompt, output_filename):
+        print(f"Successfully generated {output_filename}")
+    else:
+        print("Image generation failed")
