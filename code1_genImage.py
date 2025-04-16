@@ -18,8 +18,7 @@ from PIL import Image
 from io import BytesIO
 import ollama
 
-
-def extract_text_from_image(image_path, api_key='xxxxxxx', language='auto'):
+def extract_text_from_image(image_path, api_key='K86513423888957', language='auto'):
     """Extract text from an image using OCR.space API"""
     try:
         payload = {
@@ -49,7 +48,6 @@ def extract_text_from_image(image_path, api_key='xxxxxxx', language='auto'):
         print(f"Error extracting text from image: {e}")
         return ""
 
-
 def identify_items_with_llava(image_path, ocr_text):
     """Use LLaVA to identify consumer items"""
     try:
@@ -73,7 +71,6 @@ def identify_items_with_llava(image_path, ocr_text):
         print(f"Error identifying items with LLaVA: {e}")
         return ocr_text
 
-
 def process_identified_items(items_text):
     """Process the LLaVA output to get a clean list of items"""
     # Remove introductory phrases and numbering
@@ -91,14 +88,15 @@ def process_identified_items(items_text):
     items = re.split(r'[,\n\-–—]', cleaned_text)
     items = [re.sub(r'^\W+|\W+$', '', item).strip().lower() for item in items]
 
-    # Filter valid single-word English items
+    # Filter valid single-word English items, remove common non-product words
+    stopwords = {'unit', 'food', 'genimage'}
     valid_items = [
-        item for item in items if item and re.match(r'^[a-z]+$', item)]
+        item for item in items if item and re.match(r'^[a-z]+$', item) and item not in stopwords
+    ]
 
     return valid_items
 
-
-def generate_image(prompt, filename="generated_image.png", api_key="xxxxxx"):
+def generate_image(prompt, filename="generated_image.png", api_key="XigIEMeJuU_8sM42sgihXA"):
     """Generate an image using the Stable Horde API"""
     GENERATE_URL = "https://stablehorde.net/api/v2/generate/async"
 
@@ -157,9 +155,7 @@ def generate_image(prompt, filename="generated_image.png", api_key="xxxxxx"):
         print(f"Error during generation: {e}")
         return None
 
-
 if __name__ == "__main__":
-    base_prompt = "single continuous line drawing of a {object} outline, minimalist, black line on white background, ultra clean, no details inside, pure outline only, vectorized look, logo-like, monochrome"
     image_path = "paper_detection.jpg"
 
     if os.path.exists(image_path):
@@ -168,19 +164,13 @@ if __name__ == "__main__":
         identified_items = process_identified_items(identified_items_text)
     else:
         identified_items = []
+        identified_items_text = ""
 
-    # Priority selection: 4 > 3 > 2 > 1 > apple
-    priority_order = [3, 2, 1, 0]  # Indices for items 4-3-2-1
-    selected_item = next(
-        (identified_items[i]
-         for i in priority_order if i < len(identified_items)),
-        "apple"
-    )
+    # Use the full LLaVA output (cleaned of [GenImage] tags) as the prompt
+    llava_prompt = re.sub(r'\[GenImage\]\s*', '', identified_items_text).strip()
+    output_filename = "llava_output_outline.png"
 
-    prompt = base_prompt.format(object=selected_item)
-    output_filename = f"{selected_item.replace(' ', '_')}_outline.png"
-
-    if generate_image(prompt, output_filename):
+    if generate_image(llava_prompt, output_filename):
         print(f"Successfully generated {output_filename}")
     else:
         print("Image generation failed")
