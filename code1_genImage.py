@@ -19,7 +19,7 @@ from io import BytesIO
 import ollama
 
 
-def extract_text_from_image(image_path, api_key='K86513423888957', language='auto'):
+def extract_text_from_image(image_path, api_key='xxxx', language='auto'):
     """Extract text from an image using OCR.space API"""
     try:
         payload = {
