@@ -86,7 +86,7 @@ def process_identified_items(items_text):
     return items
 
 
-def generate_image(prompt, filename="generated_image.png", api_key="XigIEMeJuU_8sM42sgihXA"):
+def generate_image(prompt, filename="generated_image.png", api_key="xxx"):
     """Generate an image using the Stable Horde API"""
     # API endpoints
     GENERATE_URL = "https://stablehorde.net/api/v2/generate/async"
